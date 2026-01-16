@@ -1,641 +1,438 @@
 import streamlit as st
-import pandas as pd
 import numpy as np
-from scipy.sparse.linalg import svds
+from sklearn.linear_model import LinearRegression
+import pandas as pd
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
 
 # Page configuration
 st.set_page_config(
-    page_title="MAX",
-    page_icon="🎬",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    page_title="Coarsening Bias Simulation",
+    page_icon="📊",
+    layout="wide"
 )
 
-# Custom CSS for dark theme
+# Custom CSS
 st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap');
-    
-    * {
-        font-family: 'Poppins', sans-serif;
+    <style>
+    .main {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     }
-    
     .stApp {
-        background: #0a0a0a;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     }
-    
-    .main-header {
-        text-align: center;
-        padding: 2rem 0;
-        background: linear-gradient(135deg, rgba(255, 153, 0, 0.2), rgba(19, 136, 8, 0.2));
-        border-radius: 20px;
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 153, 0, 0.3);
-        margin-bottom: 2rem;
-        box-shadow: 0 8px 32px 0 rgba(255, 153, 0, 0.3);
-    }
-    
-    .movie-card {
-        background: #1a1a1a;
-        border-radius: 15px;
-        padding: 0;
-        margin: 1rem 0;
-        border: 1px solid #333;
-        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
-        overflow: hidden;
-    }
-    
-    .movie-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 12px 40px 0 rgba(255, 153, 0, 0.5);
-        border-color: #ff9900;
-    }
-    
-    .movie-poster {
-        width: 100%;
-        height: 400px;
-        min-height: 400px;
-        max-height: 400px;
-        object-fit: cover;
-        object-position: center top;
-        border-radius: 15px 15px 0 0;
-        display: block;
-    }
-    .movie-info {
-        padding: 1.5rem;
-    }
-    
     .metric-card {
-        background: linear-gradient(135deg, #ff9900 0%, #138808 100%);
-        border-radius: 15px;
-        padding: 1.5rem;
-        text-align: center;
-        color: white;
-        box-shadow: 0 8px 32px 0 rgba(255, 153, 0, 0.3);
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
-    
-    .stButton>button {
-        background: linear-gradient(135deg, #ff9900 0%, #138808 100%);
-        color: white;
-        border: none;
-        padding: 0.75rem 2rem;
-        font-size: 1.1rem;
-        font-weight: 600;
-        border-radius: 50px;
-        box-shadow: 0 4px 15px 0 rgba(255, 153, 0, 0.5);
-        transition: all 0.3s ease;
-    }
-    
-    .stButton>button:hover {
-        transform: scale(1.05);
-        box-shadow: 0 6px 20px 0 rgba(255, 153, 0, 0.7);
-    }
-    
-    .prediction-box {
-        background: linear-gradient(135deg, #ff9900 0%, #138808 100%);
-        border-radius: 20px;
-        padding: 2rem;
-        text-align: center;
-        color: white;
-        box-shadow: 0 12px 40px 0 rgba(255, 153, 0, 0.5);
-        margin: 2rem 0;
-        animation: glow 2s ease-in-out infinite;
-    }
-    
-    @keyframes glow {
-        0%, 100% { box-shadow: 0 12px 40px 0 rgba(255, 153, 0, 0.5); }
-        50% { box-shadow: 0 12px 60px 0 rgba(255, 153, 0, 0.8); }
-    }
-    
-    .math-box {
-        background: #1a1a1a;
-        border-radius: 15px;
-        padding: 1.5rem;
-        color: white;
-        border: 2px solid #333;
-        margin: 1rem 0;
-    }
-    
-    .step-box {
-        background: #1a1a1a;
-        border-left: 4px solid #ff9900;
-        padding: 1rem;
-        margin: 1rem 0;
-        border-radius: 5px;
-    }
-    
-    h1, h2, h3, h4, p, li, span, div, label {
-        color: white !important;
-    }
-    
-    .stProgress > div > div > div {
-        background-color: #ff9900;
-    }
-</style>
+    </style>
 """, unsafe_allow_html=True)
 
-# Indian movies dataset with real poster URLs
-indian_movies_data = {
-    'movie_id': list(range(1, 31)),
-    'title': [
-        '3 Idiots', 'Dangal', 'PK', 'Baahubali 2', 'Bajrangi Bhaijaan',
-        'Secret Superstar', 'Baahubali: The Beginning', 'Sultan', 'Sanju', 'Padmaavat',
-        'Tiger Zinda Hai', 'Dilwale Dulhania Le Jayenge', 'Kabir Singh', 'War', 'Chennai Express',
-        'Dhoom 3', 'Krrish 3', 'Golmaal Again', 'Simmba', 'Kick',
-        'Ek Tha Tiger', 'Bang Bang', 'Sholay', 'Lagaan', 'Andhadhun',
-        'Article 15', 'URI: The Surgical Strike', 'Gully Boy', 'Chhichhore', 'Mission Mangal'
-    ],
-    'year': [
-        2009, 2016, 2014, 2017, 2015,
-        2017, 2015, 2016, 2018, 2018,
-        2017, 1995, 2019, 2019, 2013,
-        2013, 2013, 2017, 2018, 2014,
-        2012, 2014, 1975, 2001, 2018,
-        2019, 2019, 2019, 2019, 2019
-    ],
-    'genre': [
-        'Comedy, Drama', 'Biography, Drama, Sport', 'Comedy, Drama, Sci-Fi', 'Action, Drama', 'Action, Adventure, Comedy',
-        'Drama, Music', 'Action, Adventure, Fantasy', 'Action, Drama, Sport', 'Biography, Comedy, Drama', 'Drama, History, Romance',
-        'Action, Adventure, Thriller', 'Drama, Romance', 'Drama, Romance', 'Action, Thriller', 'Action, Comedy, Romance',
-        'Action, Thriller', 'Action, Sci-Fi', 'Action, Comedy', 'Action, Comedy, Crime', 'Action, Thriller',
-        'Action, Romance, Thriller', 'Action, Comedy, Romance', 'Action, Adventure, Thriller', 'Drama, Musical, Sport', 'Crime, Mystery, Thriller',
-        'Crime, Drama, Mystery', 'Action, Drama, War', 'Drama, Music, Romance', 'Comedy, Drama', 'Biography, Drama, History'
-    ],
-    'language': [
-        'Hindi', 'Hindi', 'Hindi', 'Telugu', 'Hindi',
-        'Hindi', 'Telugu', 'Hindi', 'Hindi', 'Hindi',
-        'Hindi', 'Hindi', 'Hindi', 'Hindi', 'Hindi',
-        'Hindi', 'Hindi', 'Hindi', 'Hindi', 'Hindi',
-        'Hindi', 'Hindi', 'Hindi', 'Hindi', 'Hindi',
-        'Hindi', 'Hindi', 'Hindi', 'Hindi', 'Hindi'
-    ],
-    'poster_url': [
-        './3idiots.jpg',  # 3 Idiots
-        './dangal.jpg',  # Dangal
-        './pk.jpg',  # PK
-        './b2.jpg',  # Baahubali 2
-        './bb.jpg',  # Bajrangi Bhaijaan
-        './Secret Superstar.jpeg',# Secret Superstar
-        './Baahubali Beginning.jpg',
-        './Sultan.jpg',  # Sultan
-        './Sanju.jpg',  # Sanju
-        './Padmaavat.jpeg',  # Padmaavat
-        './Tiger Zinda Hai.jpg',  # Tiger Zinda Hai
-        './DDLJ.jpeg',  # DDLJ
-        './Kabir Singh.jpg',  # Kabir Singh
-        './War.jpg',  # war
-        './Chennai Express.jpg',  # Chennai Express
-        './Dhoom 3.jpg',  # Dhoom 3
-        './Krrish 3.jpg',  # Krrish 3
-        './Golmaal Again.jpeg',  # Golmaal Again
-        './Simmba.jpeg',  # Simmba
-        './Kick.jpg',  # Kick
-        './Ek Tha Tiger.jpg',  # Ek Tha Tiger
-        './Bang Bang.jpg',  # Bang Bang
-        './Sholay.jpg',  # Sholay
-        './Lagaan.jpg',  # Lagaan
-        './Andhadhun.jpg',  # Andhadhun
-        './Article 15.jpg',  # Article 15
-        './URI.jpg',  # URI
-        './Gully Boy.jpg',  # Gully Boy
-        './Chhichhore.jpeg',  # Chhichhore
-        './Mission Mangal.jpg'   # Mission Mangal
-    ]
-}
-
-indian_movies_df = pd.DataFrame(indian_movies_data)
-
-def create_synthetic_ratings(n_users=100):
-    """Create synthetic rating matrix for Indian movies"""
-    np.random.seed(42)
-    n_movies = len(indian_movies_df)
-    
-    # Create rating matrix with realistic patterns
-    ratings = np.zeros((n_users, n_movies))
-    
-    for user in range(n_users):
-        # Each user rates 40-70% of movies
-        n_ratings = np.random.randint(int(n_movies * 0.4), int(n_movies * 0.7))
-        movies_to_rate = np.random.choice(n_movies, n_ratings, replace=False)
-        
-        # User has a base rating tendency (between 2.5 and 4.5)
-        user_mean = np.random.uniform(2.5, 4.5)
-        
-        for movie in movies_to_rate:
-            # Add some variance around user mean
-            rating = user_mean + np.random.normal(0, 0.7)
-            # Clip to valid range [1, 5]
-            rating = np.clip(rating, 1.0, 5.0)
-            ratings[user, movie] = rating
-    
-    return ratings
-    
-    for user in range(n_users):
-        # Each user rates 40-70% of movies
-        n_ratings = np.random.randint(int(n_movies * 0.4), int(n_movies * 0.7))
-        movies_to_rate = np.random.choice(n_movies, n_ratings, replace=False)
-        
-        # User has a base rating tendency
-        user_mean = np.random.normal(3.5, 0.5)
-        
-        for movie in movies_to_rate:
-            # Add some variance
-            rating = user_mean + np.random.normal(0, 0.8)
-            rating = np.clip(rating, 1, 5)
-            ratings[user, movie] = rating
-    
-    return ratings
-
-def create_user_item_matrix(ratings_array):
-    """Create user-item rating matrix"""
-    return pd.DataFrame(
-        ratings_array,
-        index=range(1, len(ratings_array) + 1),
-        columns=indian_movies_df['movie_id'].tolist()
-    )
-
-def perform_svd_and_predict(user_item_matrix, user_ratings_dict, target_movie_id, k=20):
-    """Perform SVD and predict rating"""
-    
-    # Create new user profile
-    new_user_id = user_item_matrix.index.max() + 1
-    new_user_ratings = pd.Series(0, index=user_item_matrix.columns)
-    
-    for movie_id, rating in user_ratings_dict.items():
-        if movie_id in new_user_ratings.index:
-            new_user_ratings[movie_id] = rating
-    
-    # Add new user to matrix
-    extended_matrix = pd.concat([
-        user_item_matrix,
-        pd.DataFrame([new_user_ratings.values], 
-                     columns=user_item_matrix.columns, 
-                     index=[new_user_id])
-    ])
-    
-    # Convert to numpy
-    R = extended_matrix.values
-    
-    # Calculate user means
-    user_ratings_mean = np.true_divide(R.sum(axis=1), (R != 0).sum(axis=1))
-    user_ratings_mean[np.isnan(user_ratings_mean)] = 0
-    new_user_mean = user_ratings_mean[-1]
-    
-    # Normalize ratings
-    R_normalized = R - user_ratings_mean.reshape(-1, 1)
-    R_normalized[R == 0] = 0
-    
-    # Perform SVD
-    k_components = min(k, min(R.shape) - 1)
-    U, sigma, Vt = svds(R_normalized, k=k_components)
-    sigma_matrix = np.diag(sigma)
-    
-    # Reconstruct and predict
-    predicted_ratings = np.dot(np.dot(U, sigma_matrix), Vt) + user_ratings_mean.reshape(-1, 1)
-    
-    # Get prediction for target movie
-    movie_idx = list(extended_matrix.columns).index(target_movie_id)
-    user_idx = -1
-    
-    predicted_rating = predicted_ratings[user_idx, movie_idx]
-    predicted_rating = max(1, min(5, predicted_rating))
-    
-    # Calculate similar users
-    user_vector = R_normalized[user_idx]
-    similarities = []
-    for i in range(len(R_normalized) - 1):
-        if R[i, movie_idx] > 0:
-            other_vector = R_normalized[i]
-            dot_product = np.dot(user_vector, other_vector)
-            norm_product = np.linalg.norm(user_vector) * np.linalg.norm(other_vector)
-            if norm_product > 0:
-                similarity = dot_product / norm_product
-                similarities.append({
-                    'user_id': extended_matrix.index[i],
-                    'similarity': similarity,
-                    'rating': R[i, movie_idx]
-                })
-    
-    similarities.sort(key=lambda x: abs(x['similarity']), reverse=True)
-    top_similar_users = similarities[:5]
-    
-    explanation_data = {
-        'predicted_rating': predicted_rating,
-        'user_mean': new_user_mean,
-        'n_components': k_components,
-        'similar_users': top_similar_users
-    }
-    
-    return explanation_data
-
-def select_random_movies(n_movies=10):
-    """Select random movies"""
-    import random
-    selected = indian_movies_df.sample(n=n_movies, random_state=random.randint(1, 10000))
-    return selected.reset_index(drop=True)
-
-# Initialize session state
-if 'stage' not in st.session_state:
-    st.session_state.stage = 'welcome'
-if 'selected_movies' not in st.session_state:
-    st.session_state.selected_movies = None
-if 'user_ratings' not in st.session_state:
-    st.session_state.user_ratings = {}
-if 'target_movie' not in st.session_state:
-    st.session_state.target_movie = None
-if 'movie_posters' not in st.session_state:
-    st.session_state.movie_posters = {}
-
-if 'ratings_matrix' not in st.session_state:
-    st.session_state.ratings_matrix = create_synthetic_ratings(100)
-
-user_item_matrix = create_user_item_matrix(st.session_state.ratings_matrix)
-
-# Header
+# Title
+st.title("🔬 Coarsening Bias Simulation")
 st.markdown("""
-<div class="main-header">
-    <h1>🎬 MAX SVD Recommender</h1>
-    <p style="font-size: 1.2rem; color: rgba(255,255,255,0.9);">
-        Rate Popular Bollywood Movies & Watch SVD Magic! 🇮🇳
-    </p>
-</div>
-""", unsafe_allow_html=True)
+This interactive tool demonstrates the **attenuation bias** that occurs when continuous 
+covariates are coarsened into categories and then treated as continuous variables in regression.
+""")
 
-# Welcome Stage
-if st.session_state.stage == 'welcome':
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.markdown("""
-        <div class="metric-card" style="padding: 3rem;">
-            <h2>🎯 How It Works</h2>
-            <p style="font-size: 1.1rem; margin: 1.5rem 0;">
-                1️⃣ We'll show you 10 popular Bollywood movies<br><br>
-                2️⃣ Rate 9 movies you've watched (1-5 stars)<br><br>
-                3️⃣ Our SVD Recommendor will predict your rating for the 10th movie<br><br>
-                4️⃣ We'll explain the SVD math behind it!<br><br>
-                🎬 Blockbusters like 3 Idiots, Dangal, PK & more!
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        if st.button("🚀 Start the Challenge!", use_container_width=True):
-            st.session_state.selected_movies = select_random_movies(n_movies=10)
-            st.session_state.target_movie = st.session_state.selected_movies.iloc[-1]
-            st.session_state.stage = 'rating'
-            st.rerun()
+# Sidebar for parameters
+st.sidebar.header("⚙️ Simulation Parameters")
 
-# Rating Stage
-elif st.session_state.stage == 'rating':
-    st.markdown("## 🎬 Rate These Bollywood Blockbusters")
-    st.markdown("⭐ Rate movies you've **actually watched** - We need 9 ratings!")
-    
-    progress = len(st.session_state.user_ratings) / 9
-    st.progress(progress)
-    st.markdown(f"**Progress: {len(st.session_state.user_ratings)}/9 movies rated**")
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    # Display movies to rate (first 9)
-    movies_to_rate = st.session_state.selected_movies.iloc[:-1]
-    
-    for idx in range(0, len(movies_to_rate), 3):
-        cols = st.columns(3)
-        for col_idx, col in enumerate(cols):
-            movie_idx = idx + col_idx
-            if movie_idx < len(movies_to_rate):
-                movie = movies_to_rate.iloc[movie_idx]
-                
-                with col:
-                    st.markdown('<div class="movie-card">', unsafe_allow_html=True)
-                    
-                    # Display poster from URL
-                    st.image(movie['poster_url'], use_container_width=True)
-                    
-                    st.markdown('<div class="movie-info">', unsafe_allow_html=True)
-                    st.markdown(f"### {movie['title']}")
-                    st.markdown(f"**Year:** {movie['year']}")
-                    st.markdown(f"**Genre:** {movie['genre']}")
-                    st.markdown(f"**Language:** {movie['language']}")
-                    
-                    # Check if already rated
-                    if movie['movie_id'] in st.session_state.user_ratings:
-                        current_rating = st.session_state.user_ratings[movie['movie_id']]
-                        st.success(f"✅ You rated this: {current_rating} ⭐")
-                    
-                    # Rating buttons
-                    st.markdown("**Rate this movie:**")
-                    rating_cols = st.columns(5)
-                    for i, rating_col in enumerate(rating_cols):
-                        with rating_col:
-                            rating_value = i + 1
-                            if movie['movie_id'] in st.session_state.user_ratings:
-                                if st.session_state.user_ratings[movie['movie_id']] == rating_value:
-                                    st.button(f"⭐", key=f"rate_{movie['movie_id']}_{rating_value}", 
-                                            disabled=True, use_container_width=True)
-                                else:
-                                    if st.button(f"{rating_value}", key=f"rate_{movie['movie_id']}_{rating_value}",
-                                               use_container_width=True):
-                                        st.session_state.user_ratings[movie['movie_id']] = rating_value
-                                        st.rerun()
-                            else:
-                                if st.button(f"{rating_value}", key=f"rate_{movie['movie_id']}_{rating_value}",
-                                           use_container_width=True):
-                                    st.session_state.user_ratings[movie['movie_id']] = rating_value
-                                    st.rerun()
-                    
-                    st.markdown('</div></div>', unsafe_allow_html=True)
-    
-    st.markdown("<br><br>", unsafe_allow_html=True)
-    
-    if len(st.session_state.user_ratings) >= 9:
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            if st.button("🔮 Predict My Rating for the 10th Movie!", use_container_width=True):
-                st.session_state.stage = 'prediction'
-                st.rerun()
-    elif len(st.session_state.user_ratings) > 0:
-        st.info(f"💡 You've rated {len(st.session_state.user_ratings)}/9 movies. Rate {9 - len(st.session_state.user_ratings)} more!")
+# Simulation parameters
+n = st.sidebar.slider("Sample Size (n)", 500, 10000, 2000, step=500)
+true_beta = st.sidebar.slider("True Beta (β)", 0.1, 2.0, 0.5, step=0.1)
+n_sims = st.sidebar.slider("Number of Simulations", 100, 2000, 500, step=100)
 
-# Prediction Stage
-elif st.session_state.stage == 'prediction':
-    with st.spinner("🤖 AI is analyzing your preferences using SVD..."):
-        explanation_data = perform_svd_and_predict(
-            user_item_matrix,
-            st.session_state.user_ratings,
-            st.session_state.target_movie['movie_id']
-        )
-    
-    st.session_state.explanation_data = explanation_data
-    st.session_state.stage = 'reveal'
-    st.rerun()
+coarsening_type = st.sidebar.selectbox(
+    "Coarsening Type",
+    ["tertiles", "quintiles", "deciles"]
+)
 
-# Reveal Stage
-elif st.session_state.stage == 'reveal':
-    explanation_data = st.session_state.explanation_data
-    target_movie = st.session_state.target_movie
+x_dist = st.sidebar.selectbox(
+    "X Distribution",
+    ["normal", "uniform", "skewed"]
+)
+
+run_button = st.sidebar.button("🚀 Run Simulation", type="primary")
+
+# Simulation function
+@st.cache_data
+def simulate_coarsening_bias(n, true_beta, coarsening_type, x_dist, n_sims):
+    """Simulate the bias from treating coarsened covariates as continuous."""
+    results = []
+
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+
+    for sim in range(n_sims):
+        # Update progress
+        if sim % 50 == 0:
+            progress_bar.progress((sim + 1) / n_sims)
+            status_text.text(f"Running simulation {sim + 1}/{n_sims}...")
+
+        # Generate latent continuous X*
+        if x_dist == 'normal':
+            X_star = np.random.normal(50, 15, n)
+        elif x_dist == 'uniform':
+            X_star = np.random.uniform(20, 80, n)
+        elif x_dist == 'skewed':
+            X_star = np.random.gamma(2, 10, n) + 20
+
+        # Generate outcome
+        epsilon = np.random.normal(0, 5, n)
+        Y = 10 + true_beta * X_star + epsilon
+
+        # Create brackets
+        if coarsening_type == 'quintiles':
+            breaks = np.quantile(X_star, np.linspace(0, 1, 6))
+        elif coarsening_type == 'deciles':
+            breaks = np.quantile(X_star, np.linspace(0, 1, 11))
+        elif coarsening_type == 'tertiles':
+            breaks = np.quantile(X_star, np.linspace(0, 1, 4))
+
+        breaks = np.unique(breaks)
+        if len(breaks) < 2:
+            continue
+
+        # Assign to brackets
+        bracket_indices = np.digitize(X_star, breaks[1:-1])
+        midpoints = np.array([(breaks[i] + breaks[i+1]) / 2
+                              for i in range(len(breaks) - 1)])
+        X_coarsened = midpoints[bracket_indices]
+
+        # Oracle model (true X*)
+        model_oracle = LinearRegression().fit(X_star.reshape(-1, 1), Y)
+        beta_oracle = model_oracle.coef_[0]
+
+        # Naive model (coarsened)
+        model_coarsened = LinearRegression().fit(X_coarsened.reshape(-1, 1), Y)
+        beta_coarsened = model_coarsened.coef_[0]
+
+        # SE and CI
+        y_pred = model_coarsened.predict(X_coarsened.reshape(-1, 1))
+        residuals = Y - y_pred
+        mse = np.sum(residuals**2) / (n - 2)
+        X_centered = X_coarsened - np.mean(X_coarsened)
+        se_coarsened = np.sqrt(mse / np.sum(X_centered**2))
+
+        ci_lower = beta_coarsened - 1.96 * se_coarsened
+        ci_upper = beta_coarsened + 1.96 * se_coarsened
+        coverage = (true_beta >= ci_lower) and (true_beta <= ci_upper)
+
+        results.append({
+            'beta_oracle': beta_oracle,
+            'beta_coarsened': beta_coarsened,
+            'se_coarsened': se_coarsened,
+            'coverage': coverage
+        })
+
+    progress_bar.progress(1.0)
+    status_text.text("✅ Simulation complete!")
+
+    results_df = pd.DataFrame(results)
+
+    # Summary statistics
+    mean_beta_coarsened = results_df['beta_coarsened'].mean()
+    bias = mean_beta_coarsened - true_beta
+    pct_bias = (bias / true_beta) * 100
+    attenuation = mean_beta_coarsened / true_beta
+    rmse = np.sqrt(np.mean((results_df['beta_coarsened'] - true_beta)**2))
+    coverage = results_df['coverage'].mean()
+
+    return {
+        'results_df': results_df,
+        'true_beta': true_beta,
+        'mean_beta_oracle': results_df['beta_oracle'].mean(),
+        'mean_beta_coarsened': mean_beta_coarsened,
+        'bias': bias,
+        'pct_bias': pct_bias,
+        'attenuation': attenuation,
+        'rmse': rmse,
+        'coverage': coverage
+    }
+
+# Main content
+if run_button:
+    st.header("📊 Simulation Results")
     
-    # Show the mystery movie
-    col1, col2 = st.columns([1, 2])
+    # Run simulation
+    results = simulate_coarsening_bias(n, true_beta, coarsening_type, x_dist, n_sims)
+    
+    # Display key metrics
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.image(target_movie['poster_url'], use_container_width=True)
+        st.metric(
+            "True β",
+            f"{results['true_beta']:.4f}",
+            help="The true coefficient in the data generating process"
+        )
     
     with col2:
+        st.metric(
+            "Mean β̂ (Coarsened)",
+            f"{results['mean_beta_coarsened']:.4f}",
+            delta=f"{results['bias']:.4f}",
+            delta_color="inverse",
+            help="Average estimated coefficient using coarsened data"
+        )
+    
+    with col3:
+        st.metric(
+            "Attenuation Factor",
+            f"{results['attenuation']:.4f}",
+            help="Ratio of estimated to true coefficient (should be 1.0)"
+        )
+    
+    with col4:
+        st.metric(
+            "CI Coverage",
+            f"{results['coverage']:.3f}",
+            delta=f"{results['coverage'] - 0.95:.3f}",
+            delta_color="normal" if results['coverage'] >= 0.95 else "inverse",
+            help="Proportion of 95% CIs containing true parameter (should be 0.95)"
+        )
+    
+    # Key findings
+    st.markdown("---")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("🔍 Key Findings")
         st.markdown(f"""
-        <div class="prediction-box">
-            <h2>🎯 Prediction for</h2>
-            <h1 style="font-size: 2.5rem; margin: 1rem 0;">{target_movie['title']}</h1>
-            <div style="font-size: 4rem; font-weight: bold; margin: 1rem 0;">
-                {explanation_data['predicted_rating']:.1f} ⭐
-            </div>
-            <p style="font-size: 1.2rem;">
-                Year: {target_movie['year']}<br>
-                Genre: {target_movie['genre']}<br>
-                Language: {target_movie['language']}
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    # Reveal actual rating
-    st.markdown("### 🎬 What would YOU actually rate this movie?")
-    st.markdown("*(Only if you've watched it!)*")
-    
-    col1, col2, col3, col4, col5, col6 = st.columns([1, 1, 1, 1, 1, 2])
-    
-    for i, col in enumerate([col1, col2, col3, col4, col5]):
-        with col:
-            if st.button(f"{'⭐' * (i+1)}", key=f"actual_{i}", use_container_width=True):
-                st.session_state.actual_rating = i + 1
-                st.rerun()
-    
-    with col6:
-        if st.button("❌ Haven't Watched It", key="not_watched", use_container_width=True):
-            st.info("No worries! Try another round with different movies.")
-            if st.button("🔄 Try Again!", use_container_width=True, key="try_again_not_watched"):
-                # Reset everything
-                st.session_state.stage = 'welcome'
-                st.session_state.selected_movies = None
-                st.session_state.user_ratings = {}
-                st.session_state.target_movie = None
-                st.session_state.movie_posters = {}
-                for key in ['actual_rating', 'explanation_data', 'not_watched']:
-                    if key in st.session_state:
-                        del st.session_state[key]
-                st.rerun()
-    
-    if 'actual_rating' in st.session_state:
-        actual_rating = st.session_state.actual_rating
-        difference = abs(explanation_data['predicted_rating'] - actual_rating)
+        - **Percentage Bias**: {results['pct_bias']:.2f}%
+        - **RMSE**: {results['rmse']:.4f}
+        - **Mean β̂ (Oracle)**: {results['mean_beta_oracle']:.4f}
+        - **Effect underestimated by**: {(1 - results['attenuation']) * 100:.1f}%
+        """)
         
-        if difference < 0.5:
-            st.success(f"🎉 Incredible! SVD was spot on! Difference: {difference:.2f} stars")
-        elif difference < 1.0:
-            st.info(f"👍 Pretty close! Difference: {difference:.2f} stars")
-        elif difference < 1.5:
-            st.warning(f"🤔 Not bad! Off by {difference:.2f} stars")
+        # Interpretation
+        if abs(results['pct_bias']) < 5:
+            bias_level = "✅ Minimal"
+            bias_color = "green"
+        elif abs(results['pct_bias']) < 15:
+            bias_level = "⚠️ Moderate"
+            bias_color = "orange"
         else:
-            st.error(f"😅 Oops! Off by {difference:.2f} stars. You have unique taste!")
+            bias_level = "❌ Severe"
+            bias_color = "red"
         
-        st.markdown("---")
+        st.markdown(f"**Bias Level**: :{bias_color}[{bias_level}]")
+    
+    with col2:
+        st.subheader("📈 Distribution of Estimates")
         
-        # Mathematical Explanation
-        st.markdown("## 📊 How Did We Predict This?")
+        # Histogram of estimates
+        fig_hist = go.Figure()
         
-        st.markdown("""
-        <div class="math-box">
-            <h3>🧮 The SVD (Singular Value Decomposition) Magic</h3>
-            <p style="font-size: 1.1rem;">
-                We analyzed patterns from <strong>100 users</strong> rating <strong>30 Bollywood movies</strong> 
-                to find hidden "taste dimensions" and predict your rating!
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
+        fig_hist.add_trace(go.Histogram(
+            x=results['results_df']['beta_coarsened'],
+            name='Coarsened',
+            opacity=0.7,
+            marker_color='#667eea'
+        ))
         
-        st.markdown("""
-        <div class="step-box">
-            <h4>📊 Step 1: Your Rating Profile</h4>
-            <p>Your average rating: <strong>{:.2f} stars</strong></p>
-            <p>This tells us if you're generally harsh or generous with ratings.</p>
-        </div>
-        """.format(explanation_data['user_mean']), unsafe_allow_html=True)
+        fig_hist.add_vline(
+            x=results['true_beta'],
+            line_dash="dash",
+            line_color="red",
+            annotation_text="True β",
+            annotation_position="top"
+        )
         
-        st.markdown("""
-        <div class="step-box">
-            <h4>🔢 Step 2: SVD Decomposition</h4>
-            <p>We broke down the rating matrix into {} hidden "taste factors":</p>
-            <p style="font-size: 1.1rem; margin: 1rem 0;"><code>Rating Matrix ≈ U × Σ × Vᵀ</code></p>
-            <ul>
-                <li><strong>U (Users × Factors)</strong>: Your preferences across taste dimensions</li>
-                <li><strong>Σ (Diagonal)</strong>: Importance of each factor</li>
-                <li><strong>Vᵀ (Factors × Movies)</strong>: How movies relate to factors</li>
-            </ul>
-            <p>Factors might represent: comedy vs drama, old vs new, commercial vs content-driven!</p>
-        </div>
-        """.format(explanation_data['n_components']), unsafe_allow_html=True)
+        fig_hist.add_vline(
+            x=results['mean_beta_coarsened'],
+            line_dash="dash",
+            line_color="blue",
+            annotation_text="Mean β̂",
+            annotation_position="bottom"
+        )
         
-        st.markdown("""
-        <div class="step-box">
-            <h4>👥 Step 3: Finding Your Movie Twins</h4>
-            <p>Users with similar taste who also rated this movie:</p>
-        </div>
-        """, unsafe_allow_html=True)
+        fig_hist.update_layout(
+            title="Distribution of Coefficient Estimates",
+            xaxis_title="Estimated β",
+            yaxis_title="Frequency",
+            template="plotly_white",
+            height=300,
+            showlegend=False
+        )
         
-        if explanation_data['similar_users']:
-            similar_df = pd.DataFrame(explanation_data['similar_users'])
-            similar_df['similarity'] = similar_df['similarity'].apply(lambda x: f"{x:.3f}")
-            similar_df['rating'] = similar_df['rating'].apply(lambda x: f"{x:.0f} ⭐")
-            similar_df.columns = ['User ID', 'Similarity Score (-1 to 1)', 'Their Rating']
-            st.dataframe(similar_df, use_container_width=True, hide_index=True)
-            st.markdown("*Higher similarity score = more similar taste to you*")
+        st.plotly_chart(fig_hist, use_container_width=True)
+    
+    # Detailed plots
+    st.markdown("---")
+    st.subheader("📊 Detailed Analysis")
+    
+    tab1, tab2, tab3 = st.tabs(["Scatter Plot", "Bias Over Iterations", "Oracle vs Coarsened"])
+    
+    with tab1:
+        # Scatter plot of oracle vs coarsened
+        fig_scatter = go.Figure()
         
-        st.markdown("""
-        <div class="step-box">
-            <h4>🎯 Step 4: The Final Prediction</h4>
-            <p><strong>Formula:</strong></p>
-            <p style="font-size: 1.1rem;"><code>Predicted Rating = Your Average + (Taste Factor Adjustments)</code></p>
-            <p>Starting from your baseline of <strong>{:.2f} stars</strong>, we adjusted based on:</p>
-            <ul>
-                <li>How similar users rated this movie</li>
-                <li>Your preferences across the {} hidden factors</li>
-                <li>This movie's characteristics in those factors</li>
-            </ul>
-            <br>
-            <p><strong>🎬 Final Prediction: {:.1f} ⭐</strong></p>
-            <p><strong>⭐ Your Actual Rating: {} ⭐</strong></p>
-            <p><strong>📏 Difference: {:.2f} stars</strong></p>
-        </div>
-        """.format(
-            explanation_data['user_mean'],
-            explanation_data['n_components'],
-            explanation_data['predicted_rating'],
-            actual_rating,
-            difference
-        ), unsafe_allow_html=True)
+        fig_scatter.add_trace(go.Scatter(
+            x=results['results_df']['beta_oracle'],
+            y=results['results_df']['beta_coarsened'],
+            mode='markers',
+            marker=dict(
+                color='#667eea',
+                size=5,
+                opacity=0.5
+            ),
+            name='Estimates'
+        ))
         
-        st.markdown("---")
+        # 45-degree line
+        min_val = min(results['results_df']['beta_oracle'].min(), 
+                     results['results_df']['beta_coarsened'].min())
+        max_val = max(results['results_df']['beta_oracle'].max(), 
+                     results['results_df']['beta_coarsened'].max())
         
-        # Try again button
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            if st.button("🔄 Try Again with Different Movies!", use_container_width=True):
-                # Reset everything
-                st.session_state.stage = 'welcome'
-                st.session_state.selected_movies = None
-                st.session_state.user_ratings = {}
-                st.session_state.target_movie = None
-                st.session_state.movie_posters = {}
-                for key in ['actual_rating', 'explanation_data', 'not_watched']:
-                    if key in st.session_state:
-                        del st.session_state[key]
-                st.rerun()
+        fig_scatter.add_trace(go.Scatter(
+            x=[min_val, max_val],
+            y=[min_val, max_val],
+            mode='lines',
+            line=dict(color='red', dash='dash'),
+            name='Perfect Agreement'
+        ))
+        
+        fig_scatter.update_layout(
+            title="Oracle vs Coarsened Estimates",
+            xaxis_title="β̂ (Oracle - True X*)",
+            yaxis_title="β̂ (Coarsened)",
+            template="plotly_white",
+            height=500
+        )
+        
+        st.plotly_chart(fig_scatter, use_container_width=True)
+    
+    with tab2:
+        # Bias over iterations
+        results['results_df']['iteration'] = range(1, len(results['results_df']) + 1)
+        results['results_df']['bias'] = results['results_df']['beta_coarsened'] - results['true_beta']
+        
+        fig_bias = go.Figure()
+        
+        fig_bias.add_trace(go.Scatter(
+            x=results['results_df']['iteration'],
+            y=results['results_df']['bias'],
+            mode='lines',
+            line=dict(color='#667eea', width=1),
+            name='Bias'
+        ))
+        
+        fig_bias.add_hline(
+            y=0,
+            line_dash="dash",
+            line_color="red",
+            annotation_text="No Bias"
+        )
+        
+        fig_bias.add_hline(
+            y=results['bias'],
+            line_dash="dot",
+            line_color="blue",
+            annotation_text="Mean Bias"
+        )
+        
+        fig_bias.update_layout(
+            title="Bias Across Simulation Iterations",
+            xaxis_title="Iteration",
+            yaxis_title="Bias (β̂ - β)",
+            template="plotly_white",
+            height=500
+        )
+        
+        st.plotly_chart(fig_bias, use_container_width=True)
+    
+    with tab3:
+        # Box plot comparison
+        comparison_df = pd.DataFrame({
+            'Model': ['Oracle'] * len(results['results_df']) + ['Coarsened'] * len(results['results_df']),
+            'Estimate': list(results['results_df']['beta_oracle']) + list(results['results_df']['beta_coarsened'])
+        })
+        
+        fig_box = go.Figure()
+        
+        fig_box.add_trace(go.Box(
+            y=results['results_df']['beta_oracle'],
+            name='Oracle (True X*)',
+            marker_color='#2ca02c'
+        ))
+        
+        fig_box.add_trace(go.Box(
+            y=results['results_df']['beta_coarsened'],
+            name='Coarsened',
+            marker_color='#667eea'
+        ))
+        
+        fig_box.add_hline(
+            y=results['true_beta'],
+            line_dash="dash",
+            line_color="red",
+            annotation_text="True β"
+        )
+        
+        fig_box.update_layout(
+            title="Comparison of Estimation Methods",
+            yaxis_title="Estimated β",
+            template="plotly_white",
+            height=500
+        )
+        
+        st.plotly_chart(fig_box, use_container_width=True)
+    
+    # Download results
+    st.markdown("---")
+    st.subheader("💾 Export Results")
+    
+    csv = results['results_df'].to_csv(index=False)
+    st.download_button(
+        label="Download Simulation Results (CSV)",
+        data=csv,
+        file_name="coarsening_bias_results.csv",
+        mime="text/csv"
+    )
 
-# Footer
-st.markdown("---")
-st.markdown("""
-<div style="text-align: center; color: rgba(255,255,255,0.7); padding: 1rem;">
-    <p>🎬 Popular Bollywood Blockbusters from 1975-2019</p>
-</div>
-""", unsafe_allow_html=True)
+else:
+    st.info("👈 Set your parameters in the sidebar and click 'Run Simulation' to begin!")
+    
+    # Educational content
+    st.markdown("---")
+    st.header("📚 About Coarsening Bias")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("What is Coarsening?")
+        st.markdown("""
+        Coarsening occurs when a continuous variable is divided into categories:
+        - **Tertiles**: 3 groups (33rd, 67th percentiles)
+        - **Quintiles**: 5 groups (20th, 40th, 60th, 80th percentiles)
+        - **Deciles**: 10 groups (10th, 20th, ..., 90th percentiles)
+        
+        Each observation is assigned to the midpoint of its bracket.
+        """)
+    
+    with col2:
+        st.subheader("Why Does Bias Occur?")
+        st.markdown("""
+        When coarsened data is treated as continuous:
+        - Information about within-category variation is lost
+        - This causes **attenuation bias** (estimates pulled toward zero)
+        - The bias is **systematic**, not random
+        - Larger samples don't eliminate the bias
+        """)
+    
+    st.markdown("---")
+    st.subheader("💡 Expected Results")
+    st.markdown("""
+    Based on simulation studies, you should observe:
+    - **Tertiles**: ~35% underestimation of true effect
+    - **Quintiles**: ~22% underestimation of true effect
+    - **Deciles**: ~13% underestimation of true effect
+    - **Coverage rates**: Below nominal 95% level (indicating biased standard errors)
+    - **Consistency**: Bias remains stable across sample sizes
+    """)
