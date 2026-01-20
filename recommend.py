@@ -399,40 +399,90 @@ if run_button:
 else:
     st.info("👈 Set your parameters in the sidebar and click 'Run Simulation' to begin!")
     
-    # Educational content
-    st.markdown("---")
-    st.header("📚 About Coarsening Bias")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("What is Coarsening?")
-        st.markdown("""
-        Coarsening occurs when a continuous variable is divided into categories:
-        - **Tertiles**: 3 groups (33rd, 67th percentiles)
-        - **Quintiles**: 5 groups (20th, 40th, 60th, 80th percentiles)
-        - **Deciles**: 10 groups (10th, 20th, ..., 90th percentiles)
+    st.header("📚 Theoretical Framework & Mathematical Proof")
+
+    # Proof section
+    with st.expander("📝 View Mathematical Derivation of Coarsening Bias", expanded=True):
+        st.markdown("### 1. The Models")
+        st.latex(r"""
+        \begin{aligned}
+        &\text{True Model:} \\
+        &Y_i = \alpha + \beta X_i^* + \varepsilon_i \quad \text{where } i=1,2,\dots,n \\
+        &\text{where } X_i^* \text{ is continuous and unobserved.} \\
+        \\
+        &\text{Observable/Estimate Model:} \\
+        &Y_i = \hat{\alpha} + \gamma_n C_i + u_i \\
+        &\text{where } C_i = g(X_i^*) \text{ and } g: \mathbb{R} \to \{1, 2, \dots, K\} \\
+        &\text{is the coarsening function.}
+        \end{aligned}
+        """)
+
+        st.markdown("### 2. Assumptions")
+        st.latex(r"""
+        \begin{aligned}
+        &A1) \ E[\varepsilon_i | X_i] = 0 \\
+        &A2) \ \text{Samples are i.i.d.} \\
+        &A3) \ \text{The Moments are finite}
+        \end{aligned}
+        """)
+
+        st.markdown("### 3. The Convergence Proof")
+        st.latex(r"""
+        \begin{aligned}
+        &\text{By OLS, the estimator is:} \\
+        &\hat{\gamma}_n = \frac{\sum (C_i - \bar{C})(Y_i - \bar{Y})}{\sum (C_i - \bar{C})^2} = \frac{\frac{1}{n}\sum (C_i - \bar{C})(Y_i - \bar{Y})}{\frac{1}{n}\sum (C_i - \bar{C})^2} \\
+        \\
+        &\text{By the Weak Law of Large Numbers (WLLN):} \\
+        &\hat{\gamma}_n \xrightarrow{p} \frac{Cov(C, Y)}{Var(C)} = \gamma^* \quad [\text{Given } Var(C) > 0]
+        \end{aligned}
+        """)
+
+        st.markdown("### 4. Covariance Derivation")
+        st.latex(r"""
+        \begin{aligned}
+        Cov(C, Y) &= Cov(C, \alpha + \beta X^* + \varepsilon) \\
+        &= E[C(\alpha + \beta X^* + \varepsilon)] - E[C]E[\alpha + \beta X^* + \varepsilon] \\
+        &= \alpha E[C] + \beta E[C X^*] + E[C \varepsilon] - E[C](\alpha + \beta E[X^*] + E[\varepsilon]) \\
+        &= \beta(E[C X^*] - E[C]E[X^*]) + E[C \varepsilon] - E[C]E[\varepsilon] \\
+        &= \beta Cov(C, X^*) + Cov(C, \varepsilon)
+        \end{aligned}
+        """)
+
+        st.markdown("---")
+        st.latex(r"""
+        \begin{aligned}
+        &\text{Since } E[\varepsilon|C] = E[E[\varepsilon|X^*]|C] = E[0|C] = 0, \text{ then } Cov(C, \varepsilon) = 0. \\
+        \\
+        &\text{Therefore, in the limit:} \\
+        &\hat{\gamma}_n \xrightarrow{p} \gamma^* = \beta \frac{Cov(C, X^*)}{Var(C)} \\
+        \\
+        &\text{Note: } \gamma^* \neq \beta \text{ unless } \frac{Cov(C, X^*)}{Var(C)} = 1
+        \end{aligned}
+        """)
         
-        Each observation is assigned to the midpoint of its bracket.
-        """)
-    
-    with col2:
-        st.subheader("Why Does Bias Occur?")
-        st.markdown("""
-        When coarsened data is treated as continuous:
-        - Information about within-category variation is lost
-        - This causes **attenuation bias** (estimates pulled toward zero)
-        - The bias is **systematic**, not random
-        - Larger samples don't eliminate the bias
-        """)
-    
+        st.info("💡 **Key Insight:** Because $C$ is a coarsened version of $X^*$, the ratio $\\frac{Cov(C, X^*)}{Var(C)}$ is typically less than 1 (attenuation). This formally shows why coarsening pulls estimates toward zero.")
+
     st.markdown("---")
-    st.subheader("💡 Expected Results")
+    
+    # Information Sections in one column
+    st.subheader("What is Coarsening?")
     st.markdown("""
-    Based on simulation studies, you should observe:
-    - **Tertiles**: ~35% underestimation of true effect
-    - **Quintiles**: ~22% underestimation of true effect
-    - **Deciles**: ~13% underestimation of true effect
-    - **Coverage rates**: Below nominal 95% level (indicating biased standard errors)
-    - **Consistency**: Bias remains stable across sample sizes
+    Coarsening occurs when a continuous variable is divided into categories:
+    - **Tertiles**: 3 groups (33rd, 67th percentiles)
+    - **Quintiles**: 5 groups (20th, 40th, 60th, 80th percentiles)
+    - **Deciles**: 10 groups (10th, 20th, ..., 90th percentiles)
+    
+    Each observation is assigned to the midpoint of its bracket.
     """)
+
+    
+
+    st.subheader("Why Does Bias Occur?")
+    st.markdown("""
+    When coarsened data is treated as continuous:
+    - Information about within-category variation is lost
+    - This causes **attenuation bias** (estimates pulled toward zero)
+    - The bias is **systematic**, not random
+    - Larger samples don't eliminate the bias
+    """)
+
