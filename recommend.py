@@ -17,16 +17,16 @@ st.set_page_config(
 st.markdown("""
     <style>
     .main {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: #0e1117;
     }
     .stApp {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: #0e1117;
     }
     .metric-card {
-        background: white;
+        background: #1e2130;
         padding: 20px;
         border-radius: 10px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
     }
     </style>
 """, unsafe_allow_html=True)
@@ -255,7 +255,7 @@ if run_button:
             title="Distribution of Coefficient Estimates",
             xaxis_title="Estimated β",
             yaxis_title="Frequency",
-            template="plotly_white",
+            template="plotly_dark",
             height=300,
             showlegend=False
         )
@@ -302,7 +302,7 @@ if run_button:
             title="Oracle vs Coarsened Estimates",
             xaxis_title="β̂ (Oracle - True X*)",
             yaxis_title="β̂ (Coarsened)",
-            template="plotly_white",
+            template="plotly_dark",
             height=500
         )
         
@@ -341,7 +341,7 @@ if run_button:
             title="Bias Across Simulation Iterations",
             xaxis_title="Iteration",
             yaxis_title="Bias (β̂ - β)",
-            template="plotly_white",
+            template="plotly_dark",
             height=500
         )
         
@@ -378,7 +378,7 @@ if run_button:
         fig_box.update_layout(
             title="Comparison of Estimation Methods",
             yaxis_title="Estimated β",
-            template="plotly_white",
+            template="plotly_dark",
             height=500
         )
         
