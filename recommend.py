@@ -460,8 +460,7 @@ else:
         \end{aligned}
         """)
         
-        st.info("💡 **Key Insight:** Because $C$ is a coarsened version of $X^*$, the ratio $\\frac{Cov(C, X^*)}{Var(C)}$ is typically less than 1 (attenuation). This formally shows why coarsening pulls estimates toward zero.")
-
+        
     st.markdown("---")
     
     # Information Sections in one column
